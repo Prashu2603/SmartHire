@@ -1,0 +1,30 @@
+venv/
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.vscode/
+.streamlit/secrets.toml
+
+# Large datasets and generated data artifacts
+data/raw/*
+data/interim/*
+data/processed/*
+!data/raw/.gitkeep
+!data/interim/.gitkeep
+!data/processed/.gitkeep
+
+# Trained model artifacts: keep the oversized local index out of Git.
+models/job_recommender.pkl
+!models/classifier.pkl
+!models/tfidf_vectorizer.pkl
+!models/label_encoder.pkl
+!models/fit_predictor.pkl
+!models/job_recommender_deploy.pkl
+
+# Runtime and download logs
+*.log
+
+# OS/editor files
+.DS_Store
+Thumbs.db

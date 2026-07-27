@@ -1,0 +1,24 @@
+<svg width="420" height="420" viewBox="0 0 420 420" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bg" x1="45" y1="30" x2="370" y2="390" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#8B5CF6"/>
+      <stop offset="0.52" stop-color="#6C3CE9"/>
+      <stop offset="1" stop-color="#00A6A6"/>
+    </linearGradient>
+    <linearGradient id="accent" x1="155" y1="130" x2="285" y2="310" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FFFFFF"/>
+      <stop offset="1" stop-color="#E6DDFF"/>
+    </linearGradient>
+    <filter id="shadow" x="20" y="20" width="380" height="380" filterUnits="userSpaceOnUse">
+      <feDropShadow dx="0" dy="16" stdDeviation="18" flood-color="#28105E" flood-opacity="0.28"/>
+    </filter>
+  </defs>
+  <circle cx="210" cy="210" r="174" fill="url(#bg)" filter="url(#shadow)"/>
+  <circle cx="210" cy="210" r="145" stroke="white" stroke-opacity="0.18" stroke-width="2"/>
+  <path d="M133 143C133 130.85 142.85 121 155 121H265C277.15 121 287 130.85 287 143V294C287 306.15 277.15 316 265 316H155C142.85 316 133 306.15 133 294V143Z" fill="url(#accent)"/>
+  <path d="M176 121V106C176 97.1634 183.163 90 192 90H228C236.837 90 244 97.1634 244 106V121" stroke="white" stroke-width="14" stroke-linecap="round"/>
+  <circle cx="210" cy="183" r="30" fill="#6C3CE9"/>
+  <path d="M167 264C167 240.252 186.252 221 210 221C233.748 221 253 240.252 253 264V270H167V264Z" fill="#00A6A6"/>
+  <path d="M284 273L303 292L340 248" stroke="#FFCC4D" stroke-width="15" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="315" cy="271" r="55" stroke="white" stroke-width="9"/>
+</svg>
