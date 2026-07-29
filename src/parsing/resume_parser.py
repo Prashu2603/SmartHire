@@ -6,7 +6,272 @@ Supports parsing resume text from:
 """
 
 import re
-from typing import Optional
+from io import BytesIO
+from pathlib import Path
+
+
+class ResumeValidationError(ValueError):
+    """A validation failure that is safe to display directly to the user."""
+
+
+_ALLOWED_PDF_MIME_TYPES = {"application/pdf", "application/x-pdf"}
+_MAX_PDF_BYTES = 10 * 1024 * 1024
+_MIN_READABLE_CHARACTERS = 80
+
+
+_RESUME_SECTIONS = {
+    "experience": re.compile(
+        r"\b(?:work\s+experience|professional\s+experience|employment|internships?)\b",
+        re.IGNORECASE,
+    ),
+    "education": re.compile(
+        r"\b(?:education|academic\s+(?:background|qualifications?)|qualifications?)\b",
+        re.IGNORECASE,
+    ),
+    "skills": re.compile(
+        r"\b(?:technical\s+skills|skills|technologies|competencies)\b",
+        re.IGNORECASE,
+    ),
+    "projects": re.compile(r"\bprojects?\b", re.IGNORECASE),
+    "certifications": re.compile(r"\bcertifications?\b", re.IGNORECASE),
+    "objective": re.compile(r"\b(?:career\s+)?objective\b", re.IGNORECASE),
+    "summary": re.compile(
+        r"\b(?:professional\s+|career\s+|profile\s+)?summary\b",
+        re.IGNORECASE,
+    ),
+    "achievements": re.compile(
+        r"\b(?:achievements?|awards?|accomplishments?)\b",
+        re.IGNORECASE,
+    ),
+}
+
+_CONTACT_PATTERNS = (
+    re.compile(r"\b[\w.+-]+@[\w.-]+\.[a-z]{2,}\b", re.IGNORECASE),
+    re.compile(r"(?<!\d)(?:\+?\d[\s().-]*){10,15}(?!\d)"),
+)
+
+_NON_RESUME_PATTERNS = (
+    re.compile(
+        r"\b(?:certificate\s+of\s+(?:completion|achievement|participation)|"
+        r"this\s+is\s+to\s+certify)\b",
+        re.IGNORECASE,
+    ),
+    re.compile(
+        r"\b(?:invoice\s*(?:number|no\.?|#)|bill\s+to|payment\s+due|"
+        r"subtotal|total\s+amount|tax\s+invoice|gstin)\b",
+        re.IGNORECASE,
+    ),
+    re.compile(
+        r"\b(?:isbn(?:-1[03])?|table\s+of\s+contents|chapter\s+\d+|"
+        r"lecture\s+notes|class\s+notes|study\s+notes)\b",
+        re.IGNORECASE,
+    ),
+    re.compile(
+        r"\b(?:survey|questionnaire|respondent|feedback\s+form|"
+        r"strongly\s+agree|strongly\s+disagree|select\s+one|tick\s+one)\b",
+        re.IGNORECASE,
+    ),
+)
+
+_SECTION_HEADING_WORDS = {
+    "resume",
+    "curriculum vitae",
+    "education",
+    "skills",
+    "experience",
+    "projects",
+    "certifications",
+    "objective",
+    "summary",
+    "achievements",
+}
+
+
+def detect_candidate_name(text: str) -> str | None:
+    """Return a likely candidate name from the first few non-empty lines."""
+    for line in [item.strip() for item in text.splitlines() if item.strip()][:10]:
+        normalized = line.lower().rstrip(":")
+        if normalized in _SECTION_HEADING_WORDS:
+            continue
+        if any(pattern.search(line) for pattern in _CONTACT_PATTERNS):
+            continue
+        if len(line) > 60 or any(char.isdigit() for char in line):
+            continue
+        if re.fullmatch(
+            r"[A-Za-z][A-Za-z.'-]+(?:\s+[A-Za-z][A-Za-z.'-]+){1,3}",
+            line,
+        ):
+            return line
+    return None
+
+
+def assess_resume_text(text: str) -> tuple[bool, list[str]]:
+    """Check for multiple structural signals before treating text as a resume."""
+    normalized = " ".join((text or "").split())
+    if len(normalized) < 120:
+        return False, ["The document has too little readable resume information."]
+
+    section_hits = [
+        name for name, pattern in _RESUME_SECTIONS.items() if pattern.search(normalized)
+    ]
+    contact_hits = sum(bool(pattern.search(normalized)) for pattern in _CONTACT_PATTERNS)
+    chronology = bool(
+        re.search(
+            r"\b(?:19|20)\d{2}\b|\b\d+\+?\s+(?:years?|months?)\b|\b(?:present|current)\b",
+            normalized,
+            re.IGNORECASE,
+        )
+    )
+    role_signal = bool(
+        re.search(
+            r"\b(?:developer|engineer|analyst|manager|designer|consultant|intern|accountant|teacher)\b",
+            normalized,
+            re.IGNORECASE,
+        )
+    )
+    non_resume_hits = sum(
+        bool(pattern.search(normalized)) for pattern in _NON_RESUME_PATTERNS
+    )
+
+    reasons = []
+    if len(section_hits) < 2:
+        reasons.append(
+            "Include resume sections such as Experience, Education, Skills, or Projects."
+        )
+    if contact_hits == 0:
+        reasons.append("No valid email address or phone number was found.")
+    if not chronology and not role_signal:
+        reasons.append("No work-role, date, or experience details were found.")
+    if non_resume_hits:
+        reasons.append(
+            "The PDF appears to be a certificate, invoice, bill, book, notes, "
+            "or another non-resume document."
+        )
+
+    is_resume = (
+        len(section_hits) >= 2
+        and contact_hits >= 1
+        and (chronology or role_signal)
+        and non_resume_hits == 0
+    )
+    return is_resume, reasons
+
+
+def validate_resume_text(text: str) -> str:
+    """Return cleaned resume text or raise a user-safe validation error."""
+    cleaned = parse_resume_text(text)
+    accepted, reasons = assess_resume_text(cleaned)
+    if not accepted:
+        detail = " ".join(reasons)
+        raise ResumeValidationError(
+            "This document does not appear to be a resume/CV. "
+            "A resume must include an email and/or phone number and at least two "
+            "standard sections such as Education, Skills, Experience, Projects, "
+            f"Certifications, Objective, Summary, or Achievements. {detail}"
+        )
+    return cleaned
+
+
+def _read_uploaded_pdf(file) -> tuple[bytes, str | None, str | None]:
+    """Read an upload without trusting its extension or browser metadata."""
+    if isinstance(file, (str, Path)):
+        path = Path(file)
+        data = path.read_bytes()
+        return data, path.name, None
+
+    filename = getattr(file, "name", None)
+    mime_type = getattr(file, "type", None)
+    if hasattr(file, "getvalue"):
+        data = file.getvalue()
+    else:
+        position = file.tell() if hasattr(file, "tell") else None
+        data = file.read()
+        if position is not None and hasattr(file, "seek"):
+            file.seek(position)
+    return bytes(data), filename, mime_type
+
+
+def _validate_pdf_container(
+    data: bytes, filename: str | None, mime_type: str | None
+) -> None:
+    """Validate extension, MIME metadata, size, and the real PDF signature."""
+    if filename and Path(filename).suffix.lower() != ".pdf":
+        raise ResumeValidationError(
+            "Only PDF files are accepted. Files such as JPG, PNG, DOC, DOCX, "
+            "and TXT cannot be uploaded."
+        )
+    if mime_type and mime_type.lower() not in _ALLOWED_PDF_MIME_TYPES:
+        raise ResumeValidationError(
+            f"The uploaded file reports the type '{mime_type}', not PDF. "
+            "Please upload an original PDF resume."
+        )
+    if not data:
+        raise ResumeValidationError("The uploaded PDF is empty.")
+    if len(data) > _MAX_PDF_BYTES:
+        raise ResumeValidationError(
+            "The PDF is larger than 10 MB. Please upload a smaller resume PDF."
+        )
+    # PDF signatures normally begin at byte zero, but ISO 32000 readers permit
+    # a small amount of leading data. Checking the first 1 KB is strict enough
+    # to reject renamed images/documents while remaining standards-friendly.
+    if b"%PDF-" not in data[:1024]:
+        raise ResumeValidationError(
+            "This is not a real PDF file. Renaming another file to '.pdf' is "
+            "not supported."
+        )
+
+
+def _extract_pdf_text(data: bytes) -> tuple[str, bool]:
+    """Extract readable text and report whether image content was encountered."""
+    try:
+        import pdfplumber
+    except ImportError as exc:
+        raise RuntimeError(
+            "PDF extraction is unavailable. Install pdfplumber and try again."
+        ) from exc
+
+    text_parts = []
+    contains_images = False
+    try:
+        with pdfplumber.open(BytesIO(data)) as pdf:
+            if not pdf.pages:
+                raise ResumeValidationError("The uploaded PDF has no pages.")
+            for page in pdf.pages:
+                contains_images = contains_images or bool(page.images)
+                page_text = page.extract_text() or ""
+                if page_text.strip():
+                    text_parts.append(page_text)
+    except ResumeValidationError:
+        raise
+    except Exception as exc:
+        raise ResumeValidationError(
+            "The PDF is corrupt, password-protected, or cannot be read. "
+            "Please export the original resume as a new PDF and try again."
+        ) from exc
+    return "\n".join(text_parts), contains_images
+
+
+def validate_resume_pdf_upload(file) -> str:
+    """Validate a genuine, text-readable resume PDF and return its text.
+
+    All checks run server-side. The ML pipeline must only receive the returned
+    text; any validation failure raises ``ResumeValidationError`` with a
+    user-friendly explanation.
+    """
+    data, filename, mime_type = _read_uploaded_pdf(file)
+    _validate_pdf_container(data, filename, mime_type)
+    text, contains_images = _extract_pdf_text(data)
+    readable = " ".join(text.split())
+    if len(readable) < _MIN_READABLE_CHARACTERS:
+        if contains_images:
+            raise ResumeValidationError(
+                "No readable text was found. The PDF appears to be scanned or "
+                "image-only; please upload a text-based PDF resume."
+            )
+        raise ResumeValidationError(
+            "The PDF is blank or contains too little readable text to be a resume."
+        )
+    return validate_resume_text(text)
 
 
 def parse_resume_text(text: str) -> str:
@@ -51,23 +316,9 @@ def parse_resume_pdf(file) -> str:
     str
         Extracted text from the PDF.
     """
-    try:
-        import pdfplumber
-    except ImportError:
-        raise ImportError(
-            "pdfplumber is required for PDF parsing. "
-            "Install it with: pip install pdfplumber"
-        )
-
-    text_parts = []
-
-    with pdfplumber.open(file) as pdf:
-        for page in pdf.pages:
-            page_text = page.extract_text()
-            if page_text:
-                text_parts.append(page_text)
-
-    return "\n".join(text_parts)
+    data, _, _ = _read_uploaded_pdf(file)
+    text, _ = _extract_pdf_text(data)
+    return text
 
 
 def extract_skills_from_text(text: str) -> list:

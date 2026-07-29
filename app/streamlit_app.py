@@ -25,7 +25,11 @@ from src.features.match_features import calculate_fit_score
 from src.models.classifier import load_classifier, load_label_encoder, predict_roles
 from src.models.recommender import load_combined_recommender, recommend_jobs
 from src.models.skill_gap import analyze_skill_gap
-from src.parsing.resume_parser import parse_resume_pdf
+from src.parsing.resume_parser import (
+    ResumeValidationError,
+    validate_resume_pdf_upload,
+    validate_resume_text,
+)
 
 st.set_page_config(
     page_title="SmartHire",
@@ -57,12 +61,16 @@ def load_job_index():
 
 
 def resume_text(text: str, uploaded_file) -> str:
-    """Use pasted text when supplied; otherwise extract an uploaded PDF."""
+    """Extract input and allow analysis only when it is a genuine resume."""
     if text and text.strip():
-        return text.strip()
-    if uploaded_file is not None:
-        return parse_resume_pdf(uploaded_file).strip()
-    return ""
+        content = text.strip()
+    elif uploaded_file is not None:
+        # Never trust the filename alone. This validates the binary PDF,
+        # extracts readable text, and confirms that the document is a resume.
+        return validate_resume_pdf_upload(uploaded_file)
+    else:
+        return ""
+    return validate_resume_text(content)
 
 
 with st.sidebar:
@@ -139,7 +147,12 @@ with predict_tab:
             height=220,
             placeholder="Paste skills, education, and experience here…",
         )
-        pdf = st.file_uploader("Or upload a PDF resume", type=["pdf"], key="class_pdf")
+        pdf = st.file_uploader(
+            "Or upload a PDF resume",
+            type=["pdf"],
+            key="class_pdf",
+            help="PDF only, maximum 10 MB. Scanned/image-only and non-resume PDFs are rejected.",
+        )
         top_n = st.slider("Predictions to show", 3, 10, 5)
         submitted = st.form_submit_button(
             "Classify resume", type="primary", icon=":material/auto_awesome:"
@@ -174,6 +187,8 @@ with predict_tab:
                         ),
                     },
                 )
+        except ResumeValidationError as exc:
+            st.error(str(exc), icon=":material/error:")
         except Exception as exc:
             st.error(f"Could not classify this resume: {exc}", icon=":material/error:")
 
@@ -187,7 +202,12 @@ with jobs_tab:
             key="jobs_text",
             placeholder="Paste your resume or key experience…",
         )
-        pdf = st.file_uploader("Or upload a PDF resume", type=["pdf"], key="jobs_pdf")
+        pdf = st.file_uploader(
+            "Or upload a PDF resume",
+            type=["pdf"],
+            key="jobs_pdf",
+            help="PDF only, maximum 10 MB. Scanned/image-only and non-resume PDFs are rejected.",
+        )
         top_n = st.slider("Jobs to show", 3, 20, 10)
         submitted = st.form_submit_button(
             "Find job matches", type="primary", icon=":material/search:"
@@ -250,6 +270,8 @@ with jobs_tab:
                         ),
                     },
                 )
+        except ResumeValidationError as exc:
+            st.error(str(exc), icon=":material/error:")
         except Exception as exc:
             st.error(f"Could not build recommendations: {exc}", icon=":material/error:")
 
@@ -266,7 +288,12 @@ with gap_tab:
         target = st.text_input(
             "Target role", placeholder="Example: Data Scientist"
         )
-        pdf = st.file_uploader("Or upload a PDF resume", type=["pdf"], key="gap_pdf")
+        pdf = st.file_uploader(
+            "Or upload a PDF resume",
+            type=["pdf"],
+            key="gap_pdf",
+            help="PDF only, maximum 10 MB. Scanned/image-only and non-resume PDFs are rejected.",
+        )
         submitted = st.form_submit_button(
             "Analyze skill gap", type="primary", icon=":material/analytics:"
         )
@@ -300,6 +327,8 @@ with gap_tab:
                     with right.container(border=True):
                         st.subheader("Skills to improve")
                         st.write(", ".join(result["missing"]) or "No gap detected")
+        except ResumeValidationError as exc:
+            st.error(str(exc), icon=":material/error:")
         except Exception as exc:
             st.error(f"Could not analyze this role: {exc}", icon=":material/error:")
 

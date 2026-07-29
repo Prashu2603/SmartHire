@@ -24,6 +24,7 @@ models/job_recommender.pkl
 
 # Runtime and download logs
 *.log
+*.bak
 
 # OS/editor files
 .DS_Store
