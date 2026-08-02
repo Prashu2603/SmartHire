@@ -2,7 +2,7 @@
 
 **Last updated:** 02 August 2026
 
-**Project status:** Internship submission ready (deployment pending)
+**Project status:** Internship submission ready
 
 SmartHire is a classical machine-learning portal that classifies resumes,
 recommends jobs, calculates an interpretable fit score, and reports skill gaps.
