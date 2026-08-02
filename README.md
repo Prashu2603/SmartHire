@@ -31,7 +31,16 @@ pip install -r requirements.txt
 streamlit run app/streamlit_app.py
 ```
 
-Open `http://localhost:8501`. The app accepts pasted resume text or PDF files.
+Open `http://localhost:8501`. The app accepts pasted resume text, PDF files,
+and DOCX files. Uploads are validated, processed in memory, and are not stored.
+
+## Privacy and responsible use
+
+- Uploaded resumes are not written to disk or a database.
+- PDF and DOCX uploads are limited to 10 MB and validated server-side.
+- Pasted text is limited to 100,000 characters.
+- Results provide career guidance and must not be used as automated hiring decisions.
+- SmartHire does not scrape live job sites and does not use generative AI.
 
 Rebuild the combined Naukri + LinkedIn search index after changing datasets:
 
@@ -106,6 +115,12 @@ Run notebooks in numeric order:
 
 Detailed model metrics and limitations are in
 `reports/evaluation_report.txt` and `reports/final_report.pdf`.
+
+## Current scope
+
+The internship deliverables are complete locally. Online deployment and a
+future consent-based admin/database workflow are intentionally outside the
+current release scope.
 
 ## Limitations and responsible use
 

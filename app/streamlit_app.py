@@ -27,8 +27,8 @@ from src.models.recommender import load_combined_recommender, recommend_jobs
 from src.models.skill_gap import analyze_skill_gap
 from src.parsing.resume_parser import (
     ResumeValidationError,
-    validate_resume_pdf_upload,
     validate_resume_text,
+    validate_resume_upload,
 )
 
 st.set_page_config(
@@ -65,9 +65,9 @@ def resume_text(text: str, uploaded_file) -> str:
     if text and text.strip():
         content = text.strip()
     elif uploaded_file is not None:
-        # Never trust the filename alone. This validates the binary PDF,
-        # extracts readable text, and confirms that the document is a resume.
-        return validate_resume_pdf_upload(uploaded_file)
+        # Never trust the filename alone. Validate the container, extract
+        # readable text, and confirm that the document is a genuine resume.
+        return validate_resume_upload(uploaded_file)
     else:
         return ""
     return validate_resume_text(content)
@@ -84,7 +84,7 @@ with st.sidebar:
         :material/check_circle: **Resume classification**  
         :material/search: **Smart job matching**  
         :material/analytics: **Fit and skill-gap scores**  
-        :material/picture_as_pdf: **Instant PDF parsing**
+        :material/picture_as_pdf: **Instant PDF and DOCX parsing**
         """
     )
     with st.container(border=True):
@@ -119,7 +119,7 @@ journey = st.columns(3, gap="medium")
 with journey[0].container(border=True, height="stretch"):
     st.markdown(":blue-badge[STEP 1]")
     st.subheader(":material/upload_file: Share your story")
-    st.write("Paste your resume or upload a PDF. Your data stays inside this app.")
+    st.write("Paste your resume or upload a PDF/DOCX. Uploads are processed in memory and are not saved.")
 with journey[1].container(border=True, height="stretch"):
     st.markdown(":violet-badge[STEP 2]")
     st.subheader(":material/neurology: Let ML connect the dots")
@@ -145,13 +145,14 @@ with predict_tab:
         text = st.text_area(
             "Resume text",
             height=220,
+            max_chars=100_000,
             placeholder="Paste skills, education, and experience here…",
         )
-        pdf = st.file_uploader(
-            "Or upload a PDF resume",
-            type=["pdf"],
+        resume_file = st.file_uploader(
+            "Or upload a PDF/DOCX resume",
+            type=["pdf", "docx"],
             key="class_pdf",
-            help="PDF only, maximum 10 MB. Scanned/image-only and non-resume PDFs are rejected.",
+            help="PDF or DOCX, maximum 10 MB. Invalid and non-resume documents are rejected.",
         )
         top_n = st.slider("Predictions to show", 3, 10, 5)
         submitted = st.form_submit_button(
@@ -160,7 +161,7 @@ with predict_tab:
 
     if submitted:
         try:
-            content = resume_text(text, pdf)
+            content = resume_text(text, resume_file)
             if not content:
                 st.warning("Add resume text or upload a readable PDF.")
             else:
@@ -189,8 +190,8 @@ with predict_tab:
                 )
         except ResumeValidationError as exc:
             st.error(str(exc), icon=":material/error:")
-        except Exception as exc:
-            st.error(f"Could not classify this resume: {exc}", icon=":material/error:")
+        except Exception:
+            st.error("Could not classify this resume. Please try again.", icon=":material/error:")
 
 with jobs_tab:
     st.header("Find jobs built around your strengths")
@@ -199,14 +200,15 @@ with jobs_tab:
         text = st.text_area(
             "Resume text",
             height=220,
+            max_chars=100_000,
             key="jobs_text",
             placeholder="Paste your resume or key experience…",
         )
-        pdf = st.file_uploader(
-            "Or upload a PDF resume",
-            type=["pdf"],
+        resume_file = st.file_uploader(
+            "Or upload a PDF/DOCX resume",
+            type=["pdf", "docx"],
             key="jobs_pdf",
-            help="PDF only, maximum 10 MB. Scanned/image-only and non-resume PDFs are rejected.",
+            help="PDF or DOCX, maximum 10 MB. Invalid and non-resume documents are rejected.",
         )
         top_n = st.slider("Jobs to show", 3, 20, 10)
         submitted = st.form_submit_button(
@@ -215,7 +217,7 @@ with jobs_tab:
 
     if submitted:
         try:
-            content = resume_text(text, pdf)
+            content = resume_text(text, resume_file)
             if not content:
                 st.warning("Add resume text or upload a readable PDF.")
             else:
@@ -272,8 +274,8 @@ with jobs_tab:
                 )
         except ResumeValidationError as exc:
             st.error(str(exc), icon=":material/error:")
-        except Exception as exc:
-            st.error(f"Could not build recommendations: {exc}", icon=":material/error:")
+        except Exception:
+            st.error("Could not build recommendations. Please try again.", icon=":material/error:")
 
 with gap_tab:
     st.header("Build your personalized growth roadmap")
@@ -282,17 +284,18 @@ with gap_tab:
         text = st.text_area(
             "Resume text",
             height=200,
+            max_chars=100_000,
             key="gap_text",
             placeholder="Paste your skills and experience…",
         )
         target = st.text_input(
             "Target role", placeholder="Example: Data Scientist"
         )
-        pdf = st.file_uploader(
-            "Or upload a PDF resume",
-            type=["pdf"],
+        resume_file = st.file_uploader(
+            "Or upload a PDF/DOCX resume",
+            type=["pdf", "docx"],
             key="gap_pdf",
-            help="PDF only, maximum 10 MB. Scanned/image-only and non-resume PDFs are rejected.",
+            help="PDF or DOCX, maximum 10 MB. Invalid and non-resume documents are rejected.",
         )
         submitted = st.form_submit_button(
             "Analyze skill gap", type="primary", icon=":material/analytics:"
@@ -300,7 +303,7 @@ with gap_tab:
 
     if submitted:
         try:
-            content = resume_text(text, pdf)
+            content = resume_text(text, resume_file)
             if not content or not target.strip():
                 st.warning("Add a resume and enter a target role.")
             else:
@@ -329,8 +332,8 @@ with gap_tab:
                         st.write(", ".join(result["missing"]) or "No gap detected")
         except ResumeValidationError as exc:
             st.error(str(exc), icon=":material/error:")
-        except Exception as exc:
-            st.error(f"Could not analyze this role: {exc}", icon=":material/error:")
+        except Exception:
+            st.error("Could not analyze this role. Please try again.", icon=":material/error:")
 
 with about_tab:
     st.header("Transparent machine learning, meaningful guidance")

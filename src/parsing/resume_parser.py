@@ -3,6 +3,7 @@
 Supports parsing resume text from:
 - Raw text input (pasted resume content)
 - PDF files (using pdfplumber)
+- DOCX files (using python-docx)
 """
 
 import re
@@ -15,7 +16,13 @@ class ResumeValidationError(ValueError):
 
 
 _ALLOWED_PDF_MIME_TYPES = {"application/pdf", "application/x-pdf"}
+_ALLOWED_DOCX_MIME_TYPES = {
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    "application/octet-stream",
+}
 _MAX_PDF_BYTES = 10 * 1024 * 1024
+_MAX_DOCX_BYTES = 10 * 1024 * 1024
+_MAX_TEXT_CHARACTERS = 100_000
 _MIN_READABLE_CHARACTERS = 80
 
 
@@ -160,6 +167,10 @@ def assess_resume_text(text: str) -> tuple[bool, list[str]]:
 def validate_resume_text(text: str) -> str:
     """Return cleaned resume text or raise a user-safe validation error."""
     cleaned = parse_resume_text(text)
+    if len(cleaned) > _MAX_TEXT_CHARACTERS:
+        raise ResumeValidationError(
+            "The pasted resume is too long. Please keep it under 100,000 characters."
+        )
     accepted, reasons = assess_resume_text(cleaned)
     if not accepted:
         detail = " ".join(reasons)
@@ -172,7 +183,7 @@ def validate_resume_text(text: str) -> str:
     return cleaned
 
 
-def _read_uploaded_pdf(file) -> tuple[bytes, str | None, str | None]:
+def _read_uploaded_file(file) -> tuple[bytes, str | None, str | None]:
     """Read an upload without trusting its extension or browser metadata."""
     if isinstance(file, (str, Path)):
         path = Path(file)
@@ -258,7 +269,7 @@ def validate_resume_pdf_upload(file) -> str:
     text; any validation failure raises ``ResumeValidationError`` with a
     user-friendly explanation.
     """
-    data, filename, mime_type = _read_uploaded_pdf(file)
+    data, filename, mime_type = _read_uploaded_file(file)
     _validate_pdf_container(data, filename, mime_type)
     text, contains_images = _extract_pdf_text(data)
     readable = " ".join(text.split())
@@ -272,6 +283,62 @@ def validate_resume_pdf_upload(file) -> str:
             "The PDF is blank or contains too little readable text to be a resume."
         )
     return validate_resume_text(text)
+
+
+def validate_resume_docx_upload(file) -> str:
+    """Validate a DOCX upload, extract its text, and confirm it is a resume."""
+    data, filename, mime_type = _read_uploaded_file(file)
+    if filename and Path(filename).suffix.lower() != ".docx":
+        raise ResumeValidationError("Only genuine DOCX files are accepted here.")
+    if mime_type and mime_type.lower() not in _ALLOWED_DOCX_MIME_TYPES:
+        raise ResumeValidationError(
+            f"The uploaded file reports the type '{mime_type}', not DOCX."
+        )
+    if not data:
+        raise ResumeValidationError("The uploaded DOCX is empty.")
+    if len(data) > _MAX_DOCX_BYTES:
+        raise ResumeValidationError(
+            "The DOCX is larger than 10 MB. Please upload a smaller resume."
+        )
+    if not data.startswith(b"PK"):
+        raise ResumeValidationError(
+            "This is not a real DOCX file. Renaming another file is not supported."
+        )
+
+    try:
+        from docx import Document
+    except ImportError as exc:
+        raise RuntimeError(
+            "DOCX extraction is unavailable. Install python-docx and try again."
+        ) from exc
+
+    try:
+        document = Document(BytesIO(data))
+        paragraphs = [paragraph.text for paragraph in document.paragraphs]
+        for table in document.tables:
+            paragraphs.extend(cell.text for row in table.rows for cell in row.cells)
+    except Exception as exc:
+        raise ResumeValidationError(
+            "The DOCX is corrupt, password-protected, or cannot be read."
+        ) from exc
+
+    readable = "\n".join(item for item in paragraphs if item.strip())
+    if len(" ".join(readable.split())) < _MIN_READABLE_CHARACTERS:
+        raise ResumeValidationError(
+            "The DOCX is blank or contains too little readable text to be a resume."
+        )
+    return validate_resume_text(readable)
+
+
+def validate_resume_upload(file) -> str:
+    """Dispatch a supported PDF or DOCX upload to its secure validator."""
+    filename = str(getattr(file, "name", "") or "")
+    suffix = Path(filename).suffix.lower()
+    if suffix == ".pdf":
+        return validate_resume_pdf_upload(file)
+    if suffix == ".docx":
+        return validate_resume_docx_upload(file)
+    raise ResumeValidationError("Upload a PDF or DOCX resume only.")
 
 
 def parse_resume_text(text: str) -> str:
@@ -316,7 +383,7 @@ def parse_resume_pdf(file) -> str:
     str
         Extracted text from the PDF.
     """
-    data, _, _ = _read_uploaded_pdf(file)
+    data, _, _ = _read_uploaded_file(file)
     text, _ = _extract_pdf_text(data)
     return text
 
