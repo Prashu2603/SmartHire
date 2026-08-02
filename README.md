@@ -8,6 +8,28 @@ SmartHire is a classical machine-learning portal that classifies resumes,
 recommends jobs, calculates an interpretable fit score, and reports skill gaps.
 It uses no live scraping, LLM, or generative AI.
 
+## Application preview
+
+### SmartHire dashboard
+
+![SmartHire dashboard](docs/screenshots/dashboard.png)
+
+### Resume classification
+
+![Resume classification results](docs/screenshots/classification-results.png)
+
+### Ranked job matches
+
+![Ranked job matches](docs/screenshots/job-matches.png)
+
+### Skill-gap roadmap
+
+![Skill-gap analysis](docs/screenshots/skill-gap.png)
+
+### Transparent project details
+
+![SmartHire project details](docs/screenshots/project-details.png)
+
 ## Results
 
 | Component | Result |
