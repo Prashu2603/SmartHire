@@ -4,12 +4,15 @@ from io import BytesIO
 
 import matplotlib.pyplot as plt
 import pytest
+from docx import Document
 
 from src.parsing.resume_parser import (
     ResumeValidationError,
     detect_candidate_name,
+    validate_resume_docx_upload,
     validate_resume_pdf_upload,
     validate_resume_text,
+    validate_resume_upload,
 )
 
 
@@ -60,11 +63,58 @@ def make_blank_pdf() -> bytes:
     return output.getvalue()
 
 
+def make_docx(text: str) -> bytes:
+    output = BytesIO()
+    document = Document()
+    for line in text.splitlines():
+        document.add_paragraph(line)
+    document.save(output)
+    return output.getvalue()
+
+
 def test_accepts_genuine_resume_pdf():
     upload = UploadedBytes(make_text_pdf(VALID_RESUME), "resume.pdf", "application/pdf")
     extracted = validate_resume_pdf_upload(upload)
     assert "prasanth@example.com" in extracted.lower()
     assert "Technical Skills" in extracted
+
+
+def test_accepts_genuine_resume_docx():
+    upload = UploadedBytes(
+        make_docx(VALID_RESUME),
+        "resume.docx",
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    )
+    extracted = validate_resume_docx_upload(upload)
+    assert "prasanth@example.com" in extracted.lower()
+    assert "Technical Skills" in extracted
+
+
+def test_dispatches_supported_upload_types():
+    pdf = UploadedBytes(make_text_pdf(VALID_RESUME), "resume.pdf", "application/pdf")
+    docx = UploadedBytes(
+        make_docx(VALID_RESUME),
+        "resume.docx",
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    )
+    assert "Professional Summary" in validate_resume_upload(pdf)
+    assert "Professional Summary" in validate_resume_upload(docx)
+
+
+def test_rejects_unsupported_upload_type():
+    upload = UploadedBytes(b"plain text", "resume.txt", "text/plain")
+    with pytest.raises(ResumeValidationError, match="PDF or DOCX"):
+        validate_resume_upload(upload)
+
+
+def test_rejects_file_renamed_to_docx():
+    upload = UploadedBytes(
+        b"not a real document",
+        "resume.docx",
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    )
+    with pytest.raises(ResumeValidationError, match="not a real DOCX"):
+        validate_resume_docx_upload(upload)
 
 
 def test_rejects_non_pdf_extension():
@@ -108,6 +158,11 @@ def test_rejects_resume_without_email_or_phone():
     )
     with pytest.raises(ResumeValidationError, match="email address or phone"):
         validate_resume_text(no_contact)
+
+
+def test_rejects_excessively_long_pasted_text():
+    with pytest.raises(ResumeValidationError, match="100,000 characters"):
+        validate_resume_text(VALID_RESUME + (" experience" * 20_000))
 
 
 def test_detects_candidate_name_when_present():

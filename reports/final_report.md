@@ -3,7 +3,7 @@
 ## Executive summary
 
 SmartHire is a resume-to-job matching and career-guidance engine built entirely
-with classical machine learning. A user can upload a PDF resume or paste text,
+with classical machine learning. A user can upload a PDF/DOCX resume or paste text,
 predict a resume category, search a merged corpus of 67,790 Naukri and LinkedIn
 job listings,
 view an interpretable fit score, and identify missing skills for a target role.
