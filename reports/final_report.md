@@ -2,7 +2,7 @@
 
 **Last updated:** 02 August 2026
 
-**Release status:** Internship submission ready (deployment pending)
+**Release status:** Internship submission ready
 
 ## Executive summary
 

@@ -337,7 +337,7 @@ with gap_tab:
 
 with about_tab:
     st.header("Transparent machine learning, meaningful guidance")
-    st.caption("Project last updated: 02 August 2026 · Deployment pending")
+    st.caption("Project last updated: 02 August 2026")
     st.markdown(
         ":violet-badge[NO LLM] :blue-badge[NO LIVE SCRAPING] "
         ":green-badge[INTERPRETABLE SCORES]"
