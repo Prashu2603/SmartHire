@@ -1,5 +1,9 @@
 # SmartHire — Final project report
 
+**Last updated:** 02 August 2026
+
+**Release status:** Internship submission ready (deployment pending)
+
 ## Executive summary
 
 SmartHire is a resume-to-job matching and career-guidance engine built entirely
