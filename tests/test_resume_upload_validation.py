@@ -2,6 +2,12 @@
 
 from io import BytesIO
 
+import matplotlib
+
+# PDF fixtures are rendered in headless test environments, where Tk may not
+# be installed or configured.
+matplotlib.use("Agg")
+
 import matplotlib.pyplot as plt
 import pytest
 from docx import Document
